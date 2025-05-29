@@ -50,18 +50,71 @@
               (symbol? (annotation-stripped (index-node-datum/annotations target-index-node))))
             (symbol->string (annotation-stripped (index-node-datum/annotations target-index-node)))
             ""))]
+      [raw-references 
+       (if (null? target-index-node)
+           '()
+           (find-available-references-for document target-index-node))]
       [whole-list
        (if (null? target-index-node)
            '()
         (if (equal? "" prefix)
-          (find-available-references-for document target-index-node)
+          raw-references
           (filter 
             (lambda (candidate-reference) 
               (string-prefix? prefix (symbol->string (identifier-reference-identifier candidate-reference))))
-            (find-available-references-for document target-index-node))))]
+            raw-references)))]
       [type-inference? (workspace-type-inference? workspace)]
       ; [type-inference? #f]
       )
+      ; Comprehensive debug logging to trace duplicates
+    (with-output-to-file "debug-completion-detailed.log"
+      (lambda ()
+        (display "=== DETAILED COMPLETION DEBUG ===\n")
+        (display (format "Target index node null? ~a\n" (null? target-index-node)))
+        (display (format "Prefix: '~a'\n" prefix))
+        
+        ; Count occurrences of each identifier in raw-references
+        (let ([id-counts '()])
+          (for-each 
+            (lambda (ref)
+              (when (identifier-reference? ref)
+                (let ([id (identifier-reference-identifier ref)])
+                  (let ([existing (assq id id-counts)])
+                    (if existing
+                      (set-cdr! existing (+ 1 (cdr existing)))
+                      (set! id-counts (cons (cons id 1) id-counts)))))))
+            raw-references)
+          
+          (display (format "Raw references count: ~a\n" (length raw-references)))
+          (display "Duplicated identifiers in raw-references:\n")
+          (for-each 
+            (lambda (pair)
+              (when (> (cdr pair) 1)
+                (display (format "  ~a: ~a times\n" (car pair) (cdr pair)))))
+            id-counts))
+        
+        ; Count occurrences in whole-list too
+        (let ([whole-id-counts '()])
+          (for-each 
+            (lambda (ref)
+              (when (identifier-reference? ref)
+                (let ([id (identifier-reference-identifier ref)])
+                  (let ([existing (assq id whole-id-counts)])
+                    (if existing
+                      (set-cdr! existing (+ 1 (cdr existing)))
+                      (set! whole-id-counts (cons (cons id 1) whole-id-counts)))))))
+            whole-list)
+          
+          (display (format "\nWhole-list count: ~a\n" (length whole-list)))
+          (display "Duplicated identifiers in whole-list:\n")
+          (for-each 
+            (lambda (pair)
+              (when (> (cdr pair) 1)
+                (display (format "  ~a: ~a times\n" (car pair) (cdr pair)))))
+            whole-id-counts))
+        
+        (display "===========================\n"))
+      'append)
       ; https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#completionList
     (list->vector 
       (cond 

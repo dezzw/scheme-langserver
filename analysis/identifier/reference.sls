@@ -233,17 +233,41 @@
     [(document current-index-node)
       (let* ([local (index-node-references-import-in-this-node current-index-node)]
           [local-identifiers (map identifier-reference-identifier local)]
-          [exclude (index-node-excluded-references current-index-node)])
+          [exclude (index-node-excluded-references current-index-node)]
+          [parent-refs (if (null? (index-node-parent current-index-node))
+                        (document-ordered-reference-list document) 
+                        (find-available-references-for document (index-node-parent current-index-node)))]
+          [filtered-parent-refs (filter 
+                                  (lambda (reference)
+                                    (not (member (identifier-reference-identifier reference) local-identifiers)))
+                                  parent-refs)]
+          [combined-refs (append local filtered-parent-refs)])
+        (with-output-to-file "debug-ref-sources.log"
+          (lambda ()
+            (display "=== Reference Sources Debug ===\n")
+            (display (format "Local refs count: ~a\n" (length local)))
+            (display (format "Parent refs count: ~a\n" (length parent-refs)))
+            (display (format "Filtered parent refs count: ~a\n" (length filtered-parent-refs)))
+            (display (format "Combined refs count: ~a\n" (length combined-refs)))
+            (display (format "Final refs count after exclude filter: ~a\n" 
+                      (length (filter (lambda (reference) (not (member reference exclude))) combined-refs))))
+            (display "\nLocal ref identifiers (first 10):\n")
+            (let loop ([refs local] [count 0])
+              (if (and (not (null? refs)) (< count 10))
+                (begin
+                  (display (format "  ~a\n" (identifier-reference-identifier (car refs))))
+                  (loop (cdr refs) (+ count 1)))))
+            (display "\nParent ref identifiers (first 10):\n")
+            (let loop ([refs parent-refs] [count 0])
+              (if (and (not (null? refs)) (< count 10))
+                (begin
+                  (display (format "  ~a\n" (identifier-reference-identifier (car refs))))
+                  (loop (cdr refs) (+ count 1)))))
+            (display "\n"))
+          'append)
         (filter
           (lambda (reference) (not (member reference exclude)))
-          (append 
-            local
-            (filter 
-              (lambda (reference)
-                (not (member (identifier-reference-identifier reference) local-identifiers)))
-              (if (null? (index-node-parent current-index-node))
-                (document-ordered-reference-list document) 
-                (find-available-references-for document (index-node-parent current-index-node)))))))]
+          combined-refs))]
     [(document current-index-node identifier) 
       (let ([expression (annotation-stripped (index-node-datum/annotations current-index-node))]
           [export-list (index-node-references-export-to-other-node current-index-node)])
